@@ -1,40 +1,43 @@
--- Table definitions for the tournament project.
---
--- Put your SQL 'create table' statements in this file; also 'create view'
--- statements if you choose to use it.
---
--- You can write comments in this file by starting them with two dashes, like
--- these lines here.
-
 -- Drops database if exists, creates new tournament DB
 DROP DATABASE IF EXISTS tournament;
 CREATE DATABASE tournament;
 \c tournament;
 
--- Holds information specific to each player - ID, name, wins, matches, points
--- Players initiated with 0 wins, 0 matches, 0 points by default
+-- Holds player name and id
 CREATE TABLE Players (
   id SERIAL,
   name TEXT,
-  wins INTEGER DEFAULT 0,
-  matches INTEGER DEFAULT 0,
-  points INTEGER DEFAULT 0,
   PRIMARY KEY (id)
 );
 
--- Holds information about pairings for next match, p1 info, p2 info, and match id
+-- Holds Match records - winner, loser, matchid
 CREATE TABLE Matches (
-  player1_id INTEGER,
-  player1_name TEXT,
-  player2_id INTEGER,
-  player2_name TEXT,
+  winner_id INTEGER,
+  loser_id INTEGER,
   matchid SERIAL,
   PRIMARY KEY (matchid),
-  FOREIGN KEY (player1_id) REFERENCES players(id),
-  FOREIGN KEY (player2_id) REFERENCES players(id)
+  FOREIGN KEY (winner_id) REFERENCES Players(id),
+  FOREIGN KEY (loser_id) REFERENCES Players(id)
 );
 
--- View from Players table sorted by current standing and name
+/* View created left joining Matches to Players, contains id, name,
+wins as subquery counting id in winner column, matches as subquery counting id
+in winner or loser columns.
+
+Would appreciate constructive criticism on simplifying/cleaning this query
+*/
 CREATE VIEW v_standings AS
-  SELECT id, name, wins, matches FROM Players
-  ORDER BY points DESC, name ASC;
+  SELECT id, name,
+    (SELECT count(*)
+      FROM Matches
+      WHERE winner_id = id
+    ) AS wins,
+    (SELECT count(*)
+      FROM Matches
+      WHERE (winner_id = id) OR (loser_id = id)
+    ) AS matches
+  FROM Players LEFT JOIN Matches
+    ON Players.id = Matches.winner_id
+  -- Group By only worked when including every column, otherwise raised error
+  GROUP BY id, name, wins, matches
+  ORDER BY wins DESC, name ASC;

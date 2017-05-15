@@ -7,20 +7,19 @@ import psycopg2
 
 
 def connect():
-    """Connect to the PostgreSQL database.  Returns a database connection."""
-    return psycopg2.connect("dbname=tournament")
+    """Connect to the PostgreSQL database. Returns DB and cursor"""
+    try:
+        DB = psycopg2.connect("dbname=tournament")
+        cursor = DB.cursor()
+        return DB, cursor
+    except:
+        print("Cannot connect to DB")
 
 
 def deleteMatches():
-    """Remove all the match records from the database.
-    Resets all player's wins, matches, and points back to 0.
-    """
-    DB = connect()
-    cursor = DB.cursor()
-    delete_query = """
-        UPDATE Players
-        SET wins = 0, matches = 0, points = 0;
-    """
+    """Remove all the match records from the database. Truncates Matches"""
+    DB, cursor = connect()
+    delete_query = "TRUNCATE Matches;"
     cursor.execute(delete_query)
     DB.commit()
     DB.close()
@@ -29,45 +28,31 @@ def deleteMatches():
 
 def deletePlayers():
     """Remove all the player records from the database.
-    Matches uses Players.id as a Foreign Key, so Matches is cleared first.
+    Truncates Players, and Matches due to dependency on Players
     """
-    DB = connect()
-    cursor = DB.cursor()
-    #Necessary to delete matches before clearing players, due to foreign key
-    delete_query = "DELETE FROM Matches;"
-    cursor.execute(delete_query)
-    DB.commit()
-
-    delete_query = "DELETE FROM Players;"
+    DB, cursor = connect()
+    delete_query = "TRUNCATE Players CASCADE;"
     cursor.execute(delete_query)
     DB.commit()
     DB.close()
     return None
 
 
-
 def countPlayers():
     """Returns the number of players currently registered."""
-    DB = connect()
-    cursor = DB.cursor()
+    DB, cursor = connect()
     count_query = "SELECT count(*) AS num FROM Players;"
     cursor.execute(count_query)
-    player_count = cursor.fetchall()
+    player_count = cursor.fetchone()
     DB.close()
-    return player_count[0][0]
+    return player_count[0]
 
 
 def registerPlayer(name):
     """Adds a player to the tournament database.
-
-    The database assigns a unique serial id number for the player.  (This
-    should be handled by your SQL database schema, not in your Python code.)
-
-    Args:
-      name: the player's full name (need not be unique).
+    Once added, assigns a serial ID to each player.
     """
-    DB = connect()
-    cursor = DB.cursor()
+    DB, cursor = connect()
     register_query = "INSERT INTO Players (name) VALUES (%s);"
     # replacing value with tuple to prevent sql injection
     cursor.execute(register_query, (name,))
@@ -78,20 +63,10 @@ def registerPlayer(name):
 
 def playerStandings():
     """Returns a list of the players and their win records, sorted by wins.
-
-    The first entry in the list should be the player in first place, or a player
-    tied for first place if there is currently a tie.
-
-    Returns:
-      A list of tuples, each of which contains (id, name, wins, matches):
-        id: the player's unique id (assigned by the database)
-        name: the player's full name (as registered)
-        wins: the number of matches the player has won
-        matches: the number of matches the player has played
+    List of Tuples containing (id, name, wins, matches) sorted by wins,
+    Created using the view v_standings
     """
-    DB = connect()
-    cursor = DB.cursor()
-    #View v_standings created from Players with current standings
+    DB, cursor = connect()
     standing_query = "SELECT * FROM v_standings;"
     cursor.execute(standing_query)
     standings = cursor.fetchall()
@@ -101,26 +76,11 @@ def playerStandings():
 
 def reportMatch(winner, loser):
     """Records the outcome of a single match between two players.
-
-    Args:
-      winner:  the id number of the player who won
-      loser:  the id number of the player who lost
+    Inserts record of winner_id and loser_id into Matches
     """
-    DB = connect()
-    cursor = DB.cursor()
-    update_query = """
-        UPDATE Players
-        SET wins = (wins + %s),
-            matches = (matches + 1),
-            points = ((wins + %s) / (matches + 1))
-        WHERE id = %s;
-    """
-    #Updates records: wins +1 for winner, +0 for loser, matches +1 for both
-    #Points for standings are equal to wins / matches
-    cursor.execute(update_query,(1, 1, winner))
-    #Is commit needed after each update query or after both?
-    DB.commit()
-    cursor.execute(update_query, (0, 0, loser))
+    DB, cursor = connect()
+    report_query = "INSERT INTO Matches VALUES (%s, %s);"
+    cursor.execute(report_query, (winner, loser))
     DB.commit()
     DB.close()
     return None
@@ -128,48 +88,11 @@ def reportMatch(winner, loser):
 
 def swissPairings():
     """Returns a list of pairs of players for the next round of a match.
-
-    Assuming that there are an even number of players registered, each player
-    appears exactly once in the pairings.  Each player is paired with another
-    player with an equal or nearly-equal win record, that is, a player adjacent
-    to him or her in the standings.
-
-    Returns:
-      A list of tuples, each of which contains (id1, name1, id2, name2)
-        id1: the first player's unique id
-        name1: the first player's name
-        id2: the second player's unique id
-        name2: the second player's name
+    Goes through Standings in pairs, creates tuples containing
+    player1id, player1name, player2id, player2name and adds those to list.
     """
-
     standings = playerStandings()
-
-    DB = connect()
-    cursor = DB.cursor()
-    #Clears prior pairings from Matches
-    delete_query = "DELETE FROM Matches"
-    cursor.execute(delete_query)
-    DB.commit()
-
-    #Takes pairs of players from standings, extracts their id and name
-    #Enters id and name into Matches table
-    for player1_info, player2_info in zip(*[iter(standings)]*2):
-        play1_id, play1_name = player1_info[0], player1_info[1]
-        play2_id, play2_name = player2_info[0], player2_info[1]
-        match_query = """
-            INSERT INTO Matches (player1_id, player1_name, player2_id, player2_name)
-            VALUES (%s, %s, %s, %s);
-        """
-        cursor.execute(match_query, (play1_id, play1_name, play2_id, play2_name))
-        DB.commit()
-
-    #Once Matches populated, extracts information from table
-    pairings_query = """
-        SELECT player1_id, player1_name, player2_id, player2_name
-        FROM Matches;
-        """
-    cursor.execute(pairings_query)
-    pairings = cursor.fetchall()
-
-    DB.close()
-    return pairings
+    matches = []
+    for player1, player2 in zip(*[iter(standings)]*2):
+        matches.append((player1[0], player1[1], player2[0], player2[1]))
+    return matches
