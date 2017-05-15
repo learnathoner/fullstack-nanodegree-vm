@@ -4,7 +4,6 @@
 #
 
 import psycopg2
-import bleach
 
 
 def connect():
@@ -13,7 +12,9 @@ def connect():
 
 
 def deleteMatches():
-    """Remove all the match records from the database."""
+    """Remove all the match records from the database.
+    Resets all player's wins, matches, and points back to 0.
+    """
     DB = connect()
     cursor = DB.cursor()
     delete_query = """
@@ -27,7 +28,9 @@ def deleteMatches():
 
 
 def deletePlayers():
-    """Remove all the player records from the database."""
+    """Remove all the player records from the database.
+    Matches uses Players.id as a Foreign Key, so Matches is cleared first.
+    """
     DB = connect()
     cursor = DB.cursor()
     #Necessary to delete matches before clearing players, due to foreign key
@@ -42,6 +45,7 @@ def deletePlayers():
     return None
 
 
+
 def countPlayers():
     """Returns the number of players currently registered."""
     DB = connect()
@@ -50,11 +54,8 @@ def countPlayers():
     cursor.execute(count_query)
     player_count = cursor.fetchall()
     DB.close()
-
-    #for row in player_count:
-    #    print row[0]
-
     return player_count[0][0]
+
 
 def registerPlayer(name):
     """Adds a player to the tournament database.
@@ -65,8 +66,6 @@ def registerPlayer(name):
     Args:
       name: the player's full name (need not be unique).
     """
-    #name = bleach.clean(name)
-
     DB = connect()
     cursor = DB.cursor()
     register_query = "INSERT INTO Players (name) VALUES (%s);"
@@ -74,8 +73,8 @@ def registerPlayer(name):
     cursor.execute(register_query, (name,))
     DB.commit()
     DB.close()
-
     return None
+
 
 def playerStandings():
     """Returns a list of the players and their win records, sorted by wins.
@@ -92,12 +91,13 @@ def playerStandings():
     """
     DB = connect()
     cursor = DB.cursor()
+    #View v_standings created from Players with current standings
     standing_query = "SELECT * FROM v_standings;"
     cursor.execute(standing_query)
     standings = cursor.fetchall()
     DB.close()
-
     return standings
+
 
 def reportMatch(winner, loser):
     """Records the outcome of a single match between two players.
@@ -108,7 +108,6 @@ def reportMatch(winner, loser):
     """
     DB = connect()
     cursor = DB.cursor()
-
     update_query = """
         UPDATE Players
         SET wins = (wins + %s),
@@ -116,14 +115,15 @@ def reportMatch(winner, loser):
             points = ((wins + %s) / (matches + 1))
         WHERE id = %s;
     """
+    #Updates records: wins +1 for winner, +0 for loser, matches +1 for both
+    #Points for standings are equal to wins / matches
     cursor.execute(update_query,(1, 1, winner))
+    #Is commit needed after each update query or after both?
+    DB.commit()
     cursor.execute(update_query, (0, 0, loser))
-
-    #Is commit needed after each update query?
     DB.commit()
     DB.close()
     return None
-
 
 
 def swissPairings():
@@ -146,10 +146,13 @@ def swissPairings():
 
     DB = connect()
     cursor = DB.cursor()
+    #Clears prior pairings from Matches
     delete_query = "DELETE FROM Matches"
     cursor.execute(delete_query)
     DB.commit()
 
+    #Takes pairs of players from standings, extracts their id and name
+    #Enters id and name into Matches table
     for player1_info, player2_info in zip(*[iter(standings)]*2):
         play1_id, play1_name = player1_info[0], player1_info[1]
         play2_id, play2_name = player2_info[0], player2_info[1]
@@ -160,7 +163,7 @@ def swissPairings():
         cursor.execute(match_query, (play1_id, play1_name, play2_id, play2_name))
         DB.commit()
 
-
+    #Once Matches populated, extracts information from table
     pairings_query = """
         SELECT player1_id, player1_name, player2_id, player2_name
         FROM Matches;
@@ -169,5 +172,4 @@ def swissPairings():
     pairings = cursor.fetchall()
 
     DB.close()
-
     return pairings

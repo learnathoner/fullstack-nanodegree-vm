@@ -6,10 +6,13 @@
 -- You can write comments in this file by starting them with two dashes, like
 -- these lines here.
 
+-- Drops database if exists, creates new tournament DB
 DROP DATABASE IF EXISTS tournament;
 CREATE DATABASE tournament;
 \c tournament;
 
+-- Holds information specific to each player - ID, name, wins, matches, points
+-- Players initiated with 0 wins, 0 matches, 0 points by default
 CREATE TABLE Players (
   id SERIAL,
   name TEXT,
@@ -19,18 +22,19 @@ CREATE TABLE Players (
   PRIMARY KEY (id)
 );
 
+-- Holds information about pairings for next match, p1 info, p2 info, and match id
 CREATE TABLE Matches (
   player1_id INTEGER,
   player1_name TEXT,
   player2_id INTEGER,
   player2_name TEXT,
-  p1outcome TEXT,
   matchid SERIAL,
   PRIMARY KEY (matchid),
   FOREIGN KEY (player1_id) REFERENCES players(id),
   FOREIGN KEY (player2_id) REFERENCES players(id)
 );
 
+-- View from Players table sorted by current standing and name
 CREATE VIEW v_standings AS
   SELECT id, name, wins, matches FROM Players
   ORDER BY points DESC, name ASC;
