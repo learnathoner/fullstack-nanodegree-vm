@@ -3,6 +3,16 @@ Program is made to track matches for a Swiss tournament. The SQL file
 creates databases and tables to store the information, while the Python
 file has functions to use those databases for running tournaments.
 
+## How to use:
+  1. From PSQL \i tournament.sql to create database, tables, and to connect
+  2. Register players for tournament using registerPlayer(). Count to insure
+  an even number of players
+  3. Create pairings using the swissPairings() function
+  4. Report results of matches using reportMatch(winner,loser)
+  5. Continue until winner found for the tournament
+  6. To play again, run deleteMatches or deletePlayers and restart  
+
+
 ## Files and description of file contents:
 1. **tournament.sql** - Creates the database holding players and match
 information
@@ -26,11 +36,3 @@ information
   9. **swissPairings()** - Returns list of pairings for next round, in tuples
   of player1id, player1name, player2id, player2name
 
-## How to use:
-  1. From PSQL \i tournament.sql to create database, tables, and to connect
-  2. Register players for tournament using registerPlayer(). Count to insure
-  an even number of players
-  3. Create pairings using the swissPairings() function
-  4. Report results of matches using reportMatch(winner,loser)
-  5. Continue until winner found for the tournament
-  6. To play again, run deleteMatches or deletePlayers and restart  
